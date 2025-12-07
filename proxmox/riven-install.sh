@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+
+# Baremetal Riven installer for Debian LXC (unprivileged)
+# - Installs system dependencies (Python, Node, Postgres, FUSE, build tools, ffmpeg, etc.)
+# - Configures FUSE and Python capabilities for RivenVFS
+# - Sets up local PostgreSQL
+# - Installs Riven backend (Python/uv) and frontend (Node/pnpm)
+# - Creates env config in /etc/riven and systemd services for both components
+
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
+color
+verb_ip6
+catch_errors
+setting_up_container
+network_check
+update_os
+
+export DEBIAN_FRONTEND=noninteractive
+
+msg_info "Installing Dependencies"
+$STD apt-get update
+$STD apt-get install -y \
+  curl sudo mc git ffmpeg \
+  python3 python3-venv python3-dev build-essential libffi-dev libpq-dev libfuse3-dev pkg-config \
+  fuse3 libcap2-bin ca-certificates openssl \
+  postgresql postgresql-contrib postgresql-client \
+  nodejs npm
+msg_ok "Installed Dependencies"
+
+msg_info "Configuring FUSE"
+if grep -qE '^\s*#?\s*user_allow_other' /etc/fuse.conf 2>/dev/null; then
+  sed -i 's/^\s*#\s*user_allow_other/user_allow_other/' /etc/fuse.conf
+else
+  echo 'user_allow_other' >> /etc/fuse.conf
+fi
+msg_ok "Configured FUSE"
+
+msg_info "Configuring Python capabilities for FUSE"
+PY_BIN=$(command -v python3 || true)
+if [ -n "$PY_BIN" ]; then
+  setcap cap_sys_admin+ep "$PY_BIN" || true
+fi
+msg_ok "Configured Python capabilities"
+
+msg_info "Configuring PostgreSQL"
+$STD systemctl enable postgresql
+$STD systemctl start postgresql
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='riven'" | grep -q 1; then
+  sudo -u postgres psql -c "CREATE DATABASE riven;" >/dev/null 2>&1 || true
+fi
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" >/dev/null 2>&1 || true
+msg_ok "Configured PostgreSQL"
+
+msg_info "Creating Riven user and directories"
+if ! id -u riven >/dev/null 2>&1; then
+  useradd -r -d /riven -s /usr/sbin/nologin riven || true
+fi
+mkdir -p /riven /riven/data /mount /opt/riven-frontend /etc/riven
+chown -R riven:riven /riven /riven/data /mount /opt/riven-frontend
+msg_ok "Created Riven user and directories"
+
+msg_info "Installing uv package manager"
+curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+export PATH="${HOME}/.local/bin:$PATH"
+UV_BIN="${HOME}/.local/bin/uv"
+if [ ! -x "$UV_BIN" ]; then
+  msg_error "uv was not installed correctly"
+  exit 1
+fi
+msg_ok "Installed uv"
+
+msg_info "Installing Riven backend"
+if [ ! -d /riven/src ]; then
+  git clone https://github.com/rivenmedia/riven.git /riven/src >/dev/null 2>&1 || {
+    msg_error "Failed to clone Riven backend repository"
+    exit 1
+  }
+else
+  cd /riven/src
+  git pull --rebase >/dev/null 2>&1 || true
+fi
+cd /riven/src
+$UV_BIN venv /riven/.venv >/dev/null 2>&1 || {
+  msg_error "Failed to create Python virtual environment with uv"
+  exit 1
+}
+$UV_BIN sync --no-dev --frozen >/dev/null 2>&1 || $UV_BIN sync --no-dev >/dev/null 2>&1 || {
+  msg_error "Failed to install Riven backend dependencies with uv"
+  exit 1
+}
+chown -R riven:riven /riven
+msg_ok "Installed Riven backend"
+
+BACKEND_ENV="/etc/riven/backend.env"
+FRONTEND_ENV="/etc/riven/frontend.env"
+mkdir -p /etc/riven
+
+msg_info "Configuring Riven backend environment"
+if [ ! -f "$BACKEND_ENV" ]; then
+  API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || echo "$(date +%s)rivenapikeyrivenapikey1234" | head -c 32)
+  AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' 2>/dev/null || tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+  cat <<EOF >"$BACKEND_ENV"
+API_KEY=$API_KEY
+AUTH_SECRET=$AUTH_SECRET
+RIVEN_FORCE_ENV=true
+RIVEN_DATABASE_HOST=postgresql+psycopg2://postgres:postgres@127.0.0.1/riven
+RIVEN_FILESYSTEM_MOUNT_PATH=/mount
+RIVEN_FILESYSTEM_CACHE_DIR=/dev/shm/riven-cache
+EOF
+  chown root:root "$BACKEND_ENV"
+  chmod 600 "$BACKEND_ENV"
+else
+  API_KEY=$(grep '^API_KEY=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
+  AUTH_SECRET=$(grep '^AUTH_SECRET=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
+  if [ -z "$API_KEY" ]; then
+    API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || echo "$(date +%s)rivenapikeyrivenapikey1234" | head -c 32)
+    echo "API_KEY=$API_KEY" >>"$BACKEND_ENV"
+  fi
+  if [ -z "$AUTH_SECRET" ]; then
+    AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' 2>/dev/null || tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+    echo "AUTH_SECRET=$AUTH_SECRET" >>"$BACKEND_ENV"
+  fi
+fi
+msg_ok "Configured Riven backend environment"
+
+msg_info "Creating systemd service for Riven backend"
+cat <<'EOF' >/etc/systemd/system/riven-backend.service
+[Unit]
+Description=Riven Backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riven
+Group=riven
+WorkingDirectory=/riven/src
+EnvironmentFile=/etc/riven/backend.env
+Environment=PATH=/riven/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=/riven/.venv/bin/python src/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+$STD systemctl enable riven-backend.service
+$STD systemctl restart riven-backend.service
+msg_ok "Created systemd service for Riven backend"
+
+msg_info "Installing Riven frontend"
+if [ ! -d /opt/riven-frontend/.git ]; then
+  rm -rf /opt/riven-frontend
+  git clone https://github.com/rivenmedia/riven-frontend.git /opt/riven-frontend >/dev/null 2>&1 || {
+    msg_error "Failed to clone Riven frontend repository"
+    exit 1
+  }
+else
+  cd /opt/riven-frontend
+  git pull --rebase >/dev/null 2>&1 || true
+fi
+cd /opt/riven-frontend
+npm install -g pnpm >/dev/null 2>&1 || true
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm install >/dev/null 2>&1
+  pnpm run build >/dev/null 2>&1
+  pnpm prune --prod >/dev/null 2>&1
+else
+  msg_error "pnpm is not available; cannot build Riven frontend"
+  exit 1
+fi
+chown -R riven:riven /opt/riven-frontend
+msg_ok "Installed Riven frontend"
+
+msg_info "Configuring Riven frontend environment"
+if [ -z "$API_KEY" ]; then
+  API_KEY=$(grep '^API_KEY=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
+fi
+if [ -z "$AUTH_SECRET" ]; then
+  AUTH_SECRET=$(grep '^AUTH_SECRET=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
+fi
+if [ ! -f "$FRONTEND_ENV" ]; then
+  cat <<EOF >"$FRONTEND_ENV"
+DATABASE_URL=/riven/data/riven.db
+BACKEND_URL=http://127.0.0.1:8080
+BACKEND_API_KEY=$API_KEY
+AUTH_SECRET=$AUTH_SECRET
+ORIGIN=http://localhost:3000
+EOF
+  chown root:root "$FRONTEND_ENV"
+  chmod 600 "$FRONTEND_ENV"
+fi
+msg_ok "Configured Riven frontend environment"
+
+msg_info "Creating systemd service for Riven frontend"
+cat <<'EOF' >/etc/systemd/system/riven-frontend.service
+[Unit]
+Description=Riven Frontend
+After=network-online.target riven-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riven
+Group=riven
+WorkingDirectory=/opt/riven-frontend
+EnvironmentFile=/etc/riven/frontend.env
+Environment=PROTOCOL_HEADER=x-forwarded-proto
+Environment=HOST_HEADER=x-forwarded-host
+ExecStart=/usr/bin/node /opt/riven-frontend/build
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+$STD systemctl enable riven-frontend.service
+$STD systemctl restart riven-frontend.service
+msg_ok "Created systemd service for Riven frontend"
+
+motd_ssh
+customize
+
+msg_info "Cleaning up"
+$STD apt-get -y autoremove
+$STD apt-get -y autoclean
+msg_ok "Cleaned"
