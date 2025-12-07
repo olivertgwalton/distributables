@@ -66,8 +66,9 @@ msg_info "Creating Riven user and directories"
 if ! id -u riven >/dev/null 2>&1; then
   useradd -r -d /riven -s /usr/sbin/nologin riven || true
 fi
-mkdir -p /riven /riven/data /mount /opt/riven-frontend /etc/riven
-chown -R riven:riven /riven /riven/data /mount /opt/riven-frontend
+	mkdir -p /riven /riven/data /mount /opt/riven-frontend /etc/riven
+	chown -R riven:riven /riven /riven/data /mount /opt/riven-frontend
+	chmod 755 /riven /riven/data /mount || true
 msg_ok "Created Riven user and directories"
 
 msg_info "Installing uv package manager"
@@ -78,6 +79,8 @@ if [ ! -x "$UV_BIN" ]; then
   msg_error "uv was not installed correctly"
   exit 1
 fi
+install -m 755 "$UV_BIN" /usr/local/bin/uv >/dev/null 2>&1 || true
+UV_BIN="/usr/local/bin/uv"
 msg_ok "Installed uv"
 
 msg_info "Installing Riven backend"
@@ -102,35 +105,23 @@ $UV_BIN sync --no-dev --frozen >/dev/null 2>&1 || $UV_BIN sync --no-dev >/dev/nu
 chown -R riven:riven /riven
 msg_ok "Installed Riven backend"
 
+msg_info "Configuring Riven backend environment"
+
 BACKEND_ENV="/etc/riven/backend.env"
 FRONTEND_ENV="/etc/riven/frontend.env"
+RIVEN_API_KEY=$(openssl rand -hex 16)
 mkdir -p /etc/riven
 
-msg_info "Configuring Riven backend environment"
 if [ ! -f "$BACKEND_ENV" ]; then
-  API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || echo "$(date +%s)rivenapikeyrivenapikey1234" | head -c 32)
-  AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' 2>/dev/null || tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
   cat <<EOF >"$BACKEND_ENV"
-API_KEY=$API_KEY
-AUTH_SECRET=$AUTH_SECRET
-RIVEN_FORCE_ENV=true
+RIVEN_API_KEY=$RIVEN_API_KEY
 RIVEN_DATABASE_HOST=postgresql+psycopg2://postgres:postgres@127.0.0.1/riven
 RIVEN_FILESYSTEM_MOUNT_PATH=/mount
+RIVEN_LIBRARY_PATH=/mnt/riven
 RIVEN_FILESYSTEM_CACHE_DIR=/dev/shm/riven-cache
 EOF
-  chown root:root "$BACKEND_ENV"
+  chown riven:riven "$BACKEND_ENV"
   chmod 600 "$BACKEND_ENV"
-else
-  API_KEY=$(grep '^API_KEY=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
-  AUTH_SECRET=$(grep '^AUTH_SECRET=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
-  if [ -z "$API_KEY" ]; then
-    API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || echo "$(date +%s)rivenapikeyrivenapikey1234" | head -c 32)
-    echo "API_KEY=$API_KEY" >>"$BACKEND_ENV"
-  fi
-  if [ -z "$AUTH_SECRET" ]; then
-    AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' 2>/dev/null || tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-    echo "AUTH_SECRET=$AUTH_SECRET" >>"$BACKEND_ENV"
-  fi
 fi
 msg_ok "Configured Riven backend environment"
 
@@ -147,8 +138,8 @@ User=riven
 Group=riven
 WorkingDirectory=/riven/src
 EnvironmentFile=/etc/riven/backend.env
-Environment=PATH=/riven/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-ExecStart=/riven/.venv/bin/python src/main.py
+Environment=PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=/usr/local/bin/uv run python src/main.py
 Restart=on-failure
 RestartSec=5
 
@@ -191,17 +182,13 @@ chown -R riven:riven /opt/riven-frontend
 msg_ok "Installed Riven frontend"
 
 msg_info "Configuring Riven frontend environment"
-if [ -z "$API_KEY" ]; then
-  API_KEY=$(grep '^API_KEY=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
-fi
-if [ -z "$AUTH_SECRET" ]; then
-  AUTH_SECRET=$(grep '^AUTH_SECRET=' "$BACKEND_ENV" | head -n1 | cut -d= -f2-)
-fi
+AUTH_SECRET=$(openssl rand -base64 32)
+
 if [ ! -f "$FRONTEND_ENV" ]; then
   cat <<EOF >"$FRONTEND_ENV"
 DATABASE_URL=/riven/data/riven.db
 BACKEND_URL=http://127.0.0.1:8080
-BACKEND_API_KEY=$API_KEY
+BACKEND_API_KEY=$RIVEN_API_KEY
 AUTH_SECRET=$AUTH_SECRET
 ORIGIN=http://localhost:3000
 EOF
