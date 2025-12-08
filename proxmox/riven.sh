@@ -74,17 +74,44 @@ start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
-echo -e "${APP} backend should be reachable at:  ${BL}http://<CT-IP>:8080/scalar${CL}"
-if [ "${RIVEN_INSTALL_FRONTEND:-yes}" != "no" ]; then
-	echo -e "${APP} frontend should be reachable at: ${BL}http://<CT-IP>:3000${CL}\n"
-else
-	echo -e "${APP} frontend was ${RD}not installed${CL} in this container. You can host it elsewhere and point it at the backend URL above.\n"
+RIVEN_CT_ID="${CTID:-}"
+if [ -z "$RIVEN_CT_ID" ]; then
+	RIVEN_CT_ID="<RIVEN_CT_ID>"
 fi
-echo -e "To edit the backend settings directly, they are accessible at ${BL}/riven/src/data/settings.json${CL}\n"
 
-echo -e "To share a host media directory with this Riven container, run on the Proxmox host:"
-echo -e "  ${BL}pct set <RIVEN_CT_ID> -mp0 /path/to/media,mp=/mnt/riven${CL}"
-echo -e "Then add the same host path into your media server container (Plex/Jellyfin/Emby/etc):"
-echo -e "  ${BL}pct set <MEDIA_CT_ID> -mp1 /path/to/media,mp=/mnt/riven${CL}\n"
-echo -e "Ensure the host media directory is world-readable (e.g. ${BL}chmod 755 /path/to/media${CL}) so the riven user can read files even if they are owned by another user like plex.\n"
+RIVEN_CT_IP=""
+if command -v pct >/dev/null 2>&1 && [ -n "${CTID:-}" ]; then
+	RIVEN_CT_IP=$(pct exec "$CTID" ip a s dev eth0 | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)
+fi
+if [ -z "$RIVEN_CT_IP" ]; then
+	RIVEN_CT_IP="<RIVEN_CT_IP>"
+fi
+
+msg_ok "Completed Successfully!\n"
+
+echo -e "Riven container ID:  ${BL}${RIVEN_CT_ID}${CL}"
+echo -e "Riven container IP:  ${BL}${RIVEN_CT_IP}${CL}\n"
+
+echo -e "${APP} backend (API) URL:"
+echo -e "  ${BL}http://${RIVEN_CT_IP}:8080/scalar${CL}\n"
+
+if [ "${RIVEN_INSTALL_FRONTEND:-yes}" != "no" ]; then
+	echo -e "${APP} frontend (web UI) URL:"
+	echo -e "  ${BL}http://${RIVEN_CT_IP}:3000${CL}\n"
+else
+	echo -e "${APP} frontend was ${RD}not installed${CL} in this container."
+	echo -e "You can host it elsewhere and point it at the backend URL above.\n"
+fi
+
+echo -e "Backend settings file inside the container:"
+echo -e "  ${BL}/riven/src/data/settings.json${CL}\n"
+
+echo -e "To share your media into this Riven container and a media server container (Plex/Jellyfin/Emby):"
+echo -e "  1) On the Proxmox host, choose or create a media folder (for example):"
+echo -e "       ${BL}/mnt/media${CL}"
+echo -e "  2) Still on the Proxmox host, add that folder to the Riven container (IDs/path filled in for you):"
+echo -e "       ${BL}pct set ${RIVEN_CT_ID} -mp0 /mnt/media,mp=/mnt/riven${CL}"
+echo -e "  3) Then add the same folder to your media server container (Plex/Jellyfin/Emby/etc):"
+echo -e "       ${BL}pct set <MEDIA_CT_ID> -mp1 /mnt/media,mp=/mnt/riven${CL}\n"
+echo -e "Make sure the host media folder is world-readable so the riven user can read the files:"
+echo -e "       ${BL}chmod 755 /mnt/media${CL}\n"
