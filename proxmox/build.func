@@ -168,56 +168,65 @@ exit-script() {
 
 # This function allows the user to configure advanced settings for the script.
 advanced_settings() {
-  whiptail --backtitle "Proxmox VE Helper Scripts" --msgbox --title "Here is an instructional tip:" "To make a selection, use the Spacebar." 8 58
-  whiptail --backtitle "Proxmox VE Helper Scripts" --msgbox --title "Default distribution for $APP" "${var_os} ${var_version} \n \nIf the default Linux distribution is not adhered to, script support will be discontinued. \n" 10 58
-  if [ "$var_os" != "alpine" ]; then
-    var_os=""
-    while [ -z "$var_os" ]; do
-      if var_os=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DISTRIBUTION" --radiolist "Choose Distribution:" 10 58 2 \
-        "debian" "" OFF \
-        "ubuntu" "" OFF \
-        3>&1 1>&2 2>&3); then
-        if [ -n "$var_os" ]; then
-          echo -e "${DGN}Using Distribution: ${BGN}$var_os${CL}"
-        fi
-      else
-        exit-script
-      fi
-    done
-  fi
+	whiptail --backtitle "Proxmox VE Helper Scripts" --msgbox --title "Here is an instructional tip:" "To make a selection, use the Spacebar." 8 58
 
-  if [ "$var_os" == "debian" ]; then
-    var_version=""
-    while [ -z "$var_version" ]; do
-      if var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DEBIAN VERSION" --radiolist "Choose Version" 10 58 2 \
-        "11" "Bullseye" OFF \
-        "12" "Bookworm" OFF \
-        3>&1 1>&2 2>&3); then
-        if [ -n "$var_version" ]; then
-          echo -e "${DGN}Using $var_os Version: ${BGN}$var_version${CL}"
-        fi
-      else
-        exit-script
-      fi
-    done
-  fi
+	if [ "${APP:-}" = "Riven" ]; then
+		# For Riven we fix the distribution to the defaults defined in riven.sh
+		# (Debian 12) and do not offer an OS/version choice here.
+		whiptail --backtitle "Proxmox VE Helper Scripts" \
+			--msgbox --title "Default distribution for $APP" \
+			"${var_os} ${var_version} \n \nThis installer is fixed to this distribution for support." 10 58
+	else
+		whiptail --backtitle "Proxmox VE Helper Scripts" --msgbox --title "Default distribution for $APP" "${var_os} ${var_version} \n \nIf the default Linux distribution is not adhered to, script support will be discontinued. \n" 10 58
+		if [ "$var_os" != "alpine" ]; then
+			var_os=""
+			while [ -z "$var_os" ]; do
+				if var_os=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DISTRIBUTION" --radiolist "Choose Distribution:" 10 58 2 \
+					"debian" "" OFF \
+					"ubuntu" "" OFF \
+					3>&1 1>&2 2>&3); then
+					if [ -n "$var_os" ]; then
+						echo -e "${DGN}Using Distribution: ${BGN}$var_os${CL}"
+					fi
+				else
+					exit-script
+				fi
+			done
+		fi
 
-  if [ "$var_os" == "ubuntu" ]; then
-    var_version=""
-    while [ -z "$var_version" ]; do
-      if var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "UBUNTU VERSION" --radiolist "Choose Version" 10 58 3 \
-        "20.04" "Focal" OFF \
-        "22.04" "Jammy" OFF \
-        "24.04" "Noble" OFF \
-        3>&1 1>&2 2>&3); then
-        if [ -n "$var_version" ]; then
-          echo -e "${DGN}Using $var_os Version: ${BGN}$var_version${CL}"
-        fi
-      else
-        exit-script
-      fi
-    done
-  fi
+		if [ "$var_os" == "debian" ]; then
+			var_version=""
+			while [ -z "$var_version" ]; do
+				if var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DEBIAN VERSION" --radiolist "Choose Version" 10 58 2 \
+					"11" "Bullseye" OFF \
+					"12" "Bookworm" OFF \
+					3>&1 1>&2 2>&3); then
+					if [ -n "$var_version" ]; then
+						echo -e "${DGN}Using $var_os Version: ${BGN}$var_version${CL}"
+					fi
+				else
+					exit-script
+				fi
+			done
+		fi
+
+		if [ "$var_os" == "ubuntu" ]; then
+			var_version=""
+			while [ -z "$var_version" ]; do
+				if var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "UBUNTU VERSION" --radiolist "Choose Version" 10 58 3 \
+					"20.04" "Focal" OFF \
+					"22.04" "Jammy" OFF \
+					"24.04" "Noble" OFF \
+					3>&1 1>&2 2>&3); then
+					if [ -n "$var_version" ]; then
+						echo -e "${DGN}Using $var_os Version: ${BGN}$var_version${CL}"
+					fi
+				else
+					exit-script
+				fi
+			done
+		fi
+	fi
 
   CT_TYPE=""
   while [ -z "$CT_TYPE" ]; do
@@ -554,16 +563,9 @@ install_script() {
   fi
   NEXTID=$(pvesh get /cluster/nextid)
   timezone=$(cat /etc/timezone)
-  header_info
-  if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "SETTINGS" --yesno "Use Default Settings?" --no-button Advanced 10 58); then
-    header_info
-    echo -e "${BL}Using Default Settings${CL}"
-    default_settings
-  else
-    header_info
-    echo -e "${RD}Using Advanced Settings${CL}"
-    advanced_settings
-  fi
+	header_info
+	echo -e "${RD}Using Advanced Settings${CL}"
+	advanced_settings
 }
 
 start() {

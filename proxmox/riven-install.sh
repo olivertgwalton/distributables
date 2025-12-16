@@ -43,17 +43,20 @@ run_media_installer() {
 
 	if ! SRC="$(curl -fsSL "$URL")"; then
 		msg_error "Failed to download ${NAME} installer script; skipping ${NAME} installation"
-		return 1
+			# Do not propagate non-zero status; media installs are optional.
+			return 0
 	fi
 
 	if ! source /dev/stdin <<<"$SRC"; then
 		msg_error "Failed to load ${NAME} installer script; skipping ${NAME} installation"
-		return 1
+			# Do not propagate non-zero status; media installs are optional.
+			return 0
 	fi
 
 	if ! "$FUNC"; then
 		msg_error "${NAME} installation encountered an error; continuing without ${NAME}"
-		return 1
+			# Do not propagate non-zero status; media installs are optional.
+			return 0
 	fi
 
 	# Record successful installation so the host helper can show

@@ -13,73 +13,51 @@
 # caller can decide whether to continue.
 
 install_jellyfin_media_server() {
-  local APT_STD="${STD:-}"
-  local OS_FAMILY="${PCT_OSTYPE:-debian}"
+	  local APT_STD="${STD:-}"
+	  local INSTALL_SCRIPT="/tmp/jellyfin-install-debuntu.sh"
 
-  msg_info "Installing Jellyfin dependencies"
-  if ! ${APT_STD} apt-get install -y curl sudo mc gpg; then
-    msg_error "Failed to install Jellyfin dependencies; skipping Jellyfin installation"
-    return 1
-  fi
-  msg_ok "Installed Jellyfin dependencies"
-
-  msg_info "Setting up Jellyfin hardware acceleration packages"
-  if ! ${APT_STD} apt-get -y install va-driver-all ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools; then
-    msg_error "Failed to install Jellyfin GPU/VAAPI packages (continuing without hardware acceleration)"
-  else
-    if [[ "${CTTYPE:-1}" == "0" && -d /dev/dri ]]; then
-      chgrp video /dev/dri || true
-      chmod 755 /dev/dri || true
-      chmod 660 /dev/dri/* 2>/dev/null || true
-      ${APT_STD} adduser "$(id -u -n)" video || true
-      ${APT_STD} adduser "$(id -u -n)" render || true
-    fi
-    msg_ok "Set up Jellyfin hardware acceleration packages"
-  fi
-
-  msg_info "Configuring Jellyfin repository"
-  mkdir -p /etc/apt/keyrings || true
-  if ! curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
-    | gpg --dearmor --yes --output /etc/apt/keyrings/jellyfin.gpg; then
-    msg_error "Failed to configure Jellyfin signing key; skipping Jellyfin installation"
-    return 1
-  fi
-
-  if ! cat <<EOF >/etc/apt/sources.list.d/jellyfin.sources
-Types: deb
-URIs: https://repo.jellyfin.org/${OS_FAMILY}
-Suites: stable
-Components: main
-Signed-By: /etc/apt/keyrings/jellyfin.gpg
-EOF
-  then
-    msg_error "Failed to configure Jellyfin apt source; skipping Jellyfin installation"
-    return 1
-  fi
-  msg_ok "Configured Jellyfin repository"
-
-	  msg_info "Installing Jellyfin Media Server"
-	  if ! ${APT_STD} apt-get update; then
-	    msg_error "apt-get update encountered errors; attempting Jellyfin installation anyway"
+	  # Ensure curl is available (normally installed earlier, but be safe).
+	  if ! command -v curl >/dev/null 2>&1; then
+	    msg_info "Installing curl for Jellyfin installer"
+	    if ! ${APT_STD} apt-get install -y curl; then
+	      msg_error "Failed to install curl; skipping Jellyfin installation"
+	      return 1
+	    fi
 	  fi
-	  if ! ${APT_STD} apt-get install -y jellyfin; then
-	    msg_error "Failed to install Jellyfin package"
+
+	  msg_info "Downloading official Jellyfin installer script"
+	  if ! curl -fsSL https://repo.jellyfin.org/install-debuntu.sh -o "${INSTALL_SCRIPT}"; then
+	    msg_error "Failed to download Jellyfin installer script; skipping Jellyfin installation"
 	    return 1
 	  fi
 
-  chown -R jellyfin:adm /etc/jellyfin 2>/dev/null || true
-  sleep 10
-  systemctl restart jellyfin 2>/dev/null || true
+	  msg_info "Running official Jellyfin installer script"
+	  if ! SKIP_CONFIRM=true bash "${INSTALL_SCRIPT}" >/dev/null 2>&1; then
+	    msg_error "Jellyfin installer script failed; skipping Jellyfin installation"
+	    rm -f "${INSTALL_SCRIPT}"
+	    return 1
+	  fi
+	  rm -f "${INSTALL_SCRIPT}"
 
-  # Adjust ssl-cert/render groups for Jellyfin (best-effort).
-  if [[ "${CTTYPE:-1}" == "0" ]]; then
-    sed -i -e 's/^ssl-cert:x:104:jellyfin$/render:x:104:root,jellyfin/' \
-      -e 's/^render:x:108:root$/ssl-cert:x:108:jellyfin/' /etc/group 2>/dev/null || true
-  else
-    sed -i -e 's/^ssl-cert:x:104:jellyfin$/render:x:104:jellyfin/' \
-      -e 's/^render:x:108:$/ssl-cert:x:108:/' /etc/group 2>/dev/null || true
-  fi
+	  # Best-effort hardware acceleration tweaks (optional).
+	  msg_info "Setting up Jellyfin hardware acceleration packages"
+	  if ! ${APT_STD} apt-get -y install va-driver-all ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools; then
+	    msg_error "Failed to install Jellyfin GPU/VAAPI packages (continuing without hardware acceleration)"
+	  else
+	    if [[ "${CTTYPE:-1}" == "0" && -d /dev/dri ]]; then
+	      chgrp video /dev/dri || true
+	      chmod 755 /dev/dri || true
+	      chmod 660 /dev/dri/* 2>/dev/null || true
+	      ${APT_STD} adduser "$(id -u -n)" video || true
+	      ${APT_STD} adduser "$(id -u -n)" render || true
+	    fi
+	    msg_ok "Set up Jellyfin hardware acceleration packages"
+	  fi
 
-  msg_ok "Installed Jellyfin Media Server"
+	  # Ensure permissions are sane; installer already does this, so best-effort.
+	  chown -R jellyfin:adm /etc/jellyfin 2>/dev/null || true
+	  systemctl restart jellyfin 2>/dev/null || true
+
+	  msg_ok "Installed Jellyfin Media Server"
 }
 
