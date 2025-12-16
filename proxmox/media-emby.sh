@@ -56,13 +56,16 @@ install_emby_media_server() {
     return 1
   fi
 
-  msg_info "Installing Emby Media Server (${LATEST})"
-  if ! ${APT_STD} dpkg -i "${DEB_PATH}"; then
-    msg_error "Failed to install Emby .deb package"
-    rm -f "${DEB_PATH}"
-    return 1
-  fi
-  rm -f "${DEB_PATH}"
+	  msg_info "Installing Emby Media Server (${LATEST})"
+	  if ! ${APT_STD} dpkg -i "${DEB_PATH}"; then
+	    msg_error "dpkg reported issues while installing Emby; attempting to fix dependencies"
+	    if ! ${APT_STD} apt-get install -f -y; then
+	      msg_error "Failed to resolve Emby dependencies"
+	      rm -f "${DEB_PATH}"
+	      return 1
+	    fi
+	  fi
+	  rm -f "${DEB_PATH}"
 
   # Adjust ssl-cert/render groups for Emby (best-effort).
   if [[ "${CTTYPE:-1}" == "0" ]]; then

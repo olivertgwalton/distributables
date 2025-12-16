@@ -69,75 +69,39 @@ run_media_installer() {
 	return 0
 }
 
-prompt_media_servers() {
-	# Prefer a whiptail checklist for a clear multi-select UI. If whiptail is
-	# unavailable (non-interactive or missing), fall back to a simple
-	# read-based prompt.
-	local MEDIA_CHOICES=""
-	if command -v whiptail >/dev/null 2>&1 && [ -t 1 ]; then
-		MEDIA_CHOICES=$(whiptail --title "Riven Media Servers" \
-			--checklist "Select optional media servers to install inside this Riven container.\n\nUse SPACE to toggle, TAB to move, and ENTER to confirm.\nSelect none to skip this step." \
-			20 78 6 \
-			"plex" "Plex Media Server" OFF \
-			"jellyfin" "Jellyfin media server" OFF \
-			"emby" "Emby media server" OFF \
-			3>&1 1>&2 2>&3) || {
-			msg_info "Skipping media server installation (dialog canceled)"
-			return
-		}
-		# whiptail returns items like: "plex" "emby"; strip quotes.
-		MEDIA_CHOICES="$(echo "$MEDIA_CHOICES" | tr -d '"')"
-	fi
+install_selected_media_servers() {
+	# Use host-provided selections (RIVEN_MEDIA_*) to decide what to install.
+	# Default for all is "no", so if the user did not explicitly select a
+	# media server on the host, nothing is installed here.
+	local WANT_PLEX WANT_JELLYFIN WANT_EMBY
+	WANT_PLEX="${RIVEN_MEDIA_PLEX:-no}"
+	WANT_JELLYFIN="${RIVEN_MEDIA_JELLYFIN:-no}"
+	WANT_EMBY="${RIVEN_MEDIA_EMBY:-no}"
 
-	# Nothing selected -> skip
-	if [[ -z "$MEDIA_CHOICES" ]]; then
-		msg_info "Skipping media server installation (none selected)"
+	# Normalize to lowercase for robustness.
+	WANT_PLEX=$(echo "$WANT_PLEX" | tr '[:upper:]' '[:lower:]')
+	WANT_JELLYFIN=$(echo "$WANT_JELLYFIN" | tr '[:upper:]' '[:lower:]')
+	WANT_EMBY=$(echo "$WANT_EMBY" | tr '[:upper:]' '[:lower:]')
+
+	if [[ "$WANT_PLEX" != "yes" && "$WANT_JELLYFIN" != "yes" && "$WANT_EMBY" != "yes" ]]; then
+		msg_info "Skipping media server installation (none selected from host)"
 		rm -f /etc/riven/media-servers.txt 2>/dev/null || true
 		return
 	fi
 
-	local WANT_PLEX=0
-	local WANT_JELLYFIN=0
-	local WANT_EMBY=0
-
-	for token in $MEDIA_CHOICES; do
-		case "$token" in
-			1|plex)
-				WANT_PLEX=1
-				;;
-			2|jellyfin)
-				WANT_JELLYFIN=1
-				;;
-			3|emby)
-				WANT_EMBY=1
-				;;
-			0|none|skip)
-				WANT_PLEX=0
-				WANT_JELLYFIN=0
-				WANT_EMBY=0
-				;;
-		esac
-	done
-
-	if (( WANT_PLEX == 0 && WANT_JELLYFIN == 0 && WANT_EMBY == 0 )); then
-		msg_info "Skipping media server installation (none selected)"
-		rm -f /etc/riven/media-servers.txt 2>/dev/null || true
-		return
-	fi
-
-	if (( WANT_PLEX == 1 )); then
+	if [[ "$WANT_PLEX" == "yes" ]]; then
 		run_media_installer \
 			"Plex" \
 			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-plex.sh" \
 			install_plex_media_server
 	fi
-	if (( WANT_JELLYFIN == 1 )); then
+	if [[ "$WANT_JELLYFIN" == "yes" ]]; then
 		run_media_installer \
 			"Jellyfin" \
 			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-jellyfin.sh" \
 			install_jellyfin_media_server
 	fi
-	if (( WANT_EMBY == 1 )); then
+	if [[ "$WANT_EMBY" == "yes" ]]; then
 		run_media_installer \
 			"Emby" \
 			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-emby.sh" \
@@ -409,7 +373,7 @@ fi
 motd_ssh
 customize
 
-prompt_media_servers
+install_selected_media_servers
 
 msg_info "Cleaning up"
 $STD apt-get -y autoremove

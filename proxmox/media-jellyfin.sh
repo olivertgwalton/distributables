@@ -58,15 +58,14 @@ EOF
   fi
   msg_ok "Configured Jellyfin repository"
 
-  msg_info "Installing Jellyfin Media Server"
-  if ! ${APT_STD} apt-get update; then
-    msg_error "apt-get update failed before Jellyfin installation; skipping Jellyfin"
-    return 1
-  fi
-  if ! ${APT_STD} apt-get install -y jellyfin; then
-    msg_error "Failed to install Jellyfin package"
-    return 1
-  fi
+	  msg_info "Installing Jellyfin Media Server"
+	  if ! ${APT_STD} apt-get update; then
+	    msg_error "apt-get update encountered errors; attempting Jellyfin installation anyway"
+	  fi
+	  if ! ${APT_STD} apt-get install -y jellyfin; then
+	    msg_error "Failed to install Jellyfin package"
+	    return 1
+	  fi
 
   chown -R jellyfin:adm /etc/jellyfin 2>/dev/null || true
   sleep 10

@@ -126,7 +126,11 @@ if [ -f "$MEDIA_FILE" ]; then
 			esac
 		done <"$MEDIA_FILE"
 		echo
+	else
+		echo -e "No optional media servers were selected for this container.\n"
 	fi
+else
+	echo -e "No optional media servers were selected for this container.\n"
 fi
 
 echo -e "Backend settings file inside the container:"

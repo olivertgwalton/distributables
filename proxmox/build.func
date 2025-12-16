@@ -453,36 +453,65 @@ advanced_settings() {
     exit-script
   fi
 
-	  # Ask whether to install and host the Riven frontend in this container.
-	  # If disabled, only the backend API will be installed here and you can
-	  # host the frontend elsewhere.
-	  if (whiptail --backtitle "Proxmox VE Helper Scripts" \
-	    --title "RIVEN FRONTEND" \
-	    --yesno "Install and host the Riven frontend in this container?\n\nIf you select No, only the backend API will be installed here. You can host the frontend on another machine or container." \
-	    12 78); then
-	    RIVEN_INSTALL_FRONTEND="yes"
-	  else
-	    RIVEN_INSTALL_FRONTEND="no"
-	  fi
-	  echo -e "${DGN}Install frontend in this CT: ${BGN}$RIVEN_INSTALL_FRONTEND${CL}"
+		  # Ask whether to install and host the Riven frontend in this container.
+		  # If disabled, only the backend API will be installed here and you can
+		  # host the frontend elsewhere.
+		  if (whiptail --backtitle "Proxmox VE Helper Scripts" \
+		    --title "RIVEN FRONTEND" \
+		    --yesno "Install and host the Riven frontend in this container?\n\nIf you select No, only the backend API will be installed here. You can host the frontend on another machine or container." \
+		    12 78); then
+		    RIVEN_INSTALL_FRONTEND="yes"
+		  else
+		    RIVEN_INSTALL_FRONTEND="no"
+		  fi
+		  echo -e "${DGN}Install frontend in this CT: ${BGN}$RIVEN_INSTALL_FRONTEND${CL}"
+		
+		  # Optional: allow user to specify the external frontend URL / origin.
+		  # If left blank, the installer will auto-detect and use http://<CT-IP>:3000.
+		  if [ "$RIVEN_INSTALL_FRONTEND" != "no" ]; then
+		    if RIVEN_FRONTEND_ORIGIN=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+		      --inputbox "Set the external URL you'll use to access the Riven frontend (ORIGIN).\n\nExamples:\n  http://<ct-ip>:3000\n  https://riven.example.com\n\nLeave blank to auto-detect using the CT IP on port 3000." \
+		      15 78 --title "RIVEN FRONTEND ORIGIN" 3>&1 1>&2 2>&3); then
+		      if [ -n "$RIVEN_FRONTEND_ORIGIN" ]; then
+		        echo -e "${DGN}Using Frontend Origin: ${BGN}$RIVEN_FRONTEND_ORIGIN${CL}"
+		      else
+		        echo -e "${DGN}Using Frontend Origin: ${BGN}Auto-detect (CT IP:3000)${CL}"
+		      fi
+		    else
+		      exit-script
+		    fi
+		  else
+		    RIVEN_FRONTEND_ORIGIN=""
+		  fi
 
-	  # Optional: allow user to specify the external frontend URL / origin.
-	  # If left blank, the installer will auto-detect and use http://<CT-IP>:3000.
-	  if [ "$RIVEN_INSTALL_FRONTEND" != "no" ]; then
-	    if RIVEN_FRONTEND_ORIGIN=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
-	      --inputbox "Set the external URL you'll use to access the Riven frontend (ORIGIN).\n\nExamples:\n  http://<ct-ip>:3000\n  https://riven.example.com\n\nLeave blank to auto-detect using the CT IP on port 3000." \
-	      15 78 --title "RIVEN FRONTEND ORIGIN" 3>&1 1>&2 2>&3); then
-	      if [ -n "$RIVEN_FRONTEND_ORIGIN" ]; then
-	        echo -e "${DGN}Using Frontend Origin: ${BGN}$RIVEN_FRONTEND_ORIGIN${CL}"
-	      else
-	        echo -e "${DGN}Using Frontend Origin: ${BGN}Auto-detect (CT IP:3000)${CL}"
-	      fi
-	    else
-	      exit-script
-	    fi
-	  else
-	    RIVEN_FRONTEND_ORIGIN=""
-	  fi
+		  # Ask which optional media servers to install inside this Riven container.
+		  # Default is that no media servers are installed unless explicitly chosen.
+		  if MEDIA_SELECTION=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+		    --checklist "Select optional media servers to install INSIDE this Riven container.\n\nIf you leave all options OFF, no media servers will be installed." \
+		    20 78 6 \
+		    "plex" "Plex Media Server" OFF \
+		    "jellyfin" "Jellyfin media server" OFF \
+		    "emby" "Emby media server" OFF \
+		    3>&1 1>&2 2>&3); then
+		    # Initialize all media selections to "no"; we'll flip to "yes" when chosen.
+		    RIVEN_MEDIA_PLEX="no"
+		    RIVEN_MEDIA_JELLYFIN="no"
+		    RIVEN_MEDIA_EMBY="no"
+		    # whiptail returns tokens like: "plex" "emby"; strip quotes and iterate.
+		    MEDIA_SELECTION=$(echo "$MEDIA_SELECTION" | tr -d '"')
+		    for choice in $MEDIA_SELECTION; do
+		      case "$choice" in
+		        plex) RIVEN_MEDIA_PLEX="yes" ;;
+		        jellyfin) RIVEN_MEDIA_JELLYFIN="yes" ;;
+		        emby) RIVEN_MEDIA_EMBY="yes" ;;
+		      esac
+		    done
+		    echo -e "${DGN}Install Plex in this CT: ${BGN}$RIVEN_MEDIA_PLEX${CL}"
+		    echo -e "${DGN}Install Jellyfin in this CT: ${BGN}$RIVEN_MEDIA_JELLYFIN${CL}"
+		    echo -e "${DGN}Install Emby in this CT: ${BGN}$RIVEN_MEDIA_EMBY${CL}"
+		  else
+		    exit-script
+		  fi
 
   if [[ "$PW" == -password* ]]; then
     if (whiptail --backtitle "Proxmox VE Helper Scripts" --defaultno --title "SSH ACCESS" --yesno "Enable Root SSH Access?" 10 58); then
@@ -590,6 +619,9 @@ build_container() {
   export SSH_ROOT="${SSH}"
   export RIVEN_FRONTEND_ORIGIN
   export RIVEN_INSTALL_FRONTEND
+	  export RIVEN_MEDIA_PLEX
+	  export RIVEN_MEDIA_JELLYFIN
+	  export RIVEN_MEDIA_EMBY
   export CTID="$CT_ID"
   export CTTYPE="$CT_TYPE"
   export PCT_OSTYPE="$var_os"
