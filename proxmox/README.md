@@ -27,7 +27,7 @@ You can override these values via the script's **Advanced Settings** dialog.
 Run this from a **Proxmox VE host shell**:
 
 ```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/riven.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/riven.sh)"
 ```
 
 The script will:

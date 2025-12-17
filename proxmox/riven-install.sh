@@ -95,19 +95,19 @@ install_selected_media_servers() {
 	if [[ "$WANT_PLEX" == "yes" ]]; then
 		run_media_installer \
 			"Plex" \
-			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-plex.sh" \
+			"https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/media-plex.sh" \
 			install_plex_media_server
 	fi
 	if [[ "$WANT_JELLYFIN" == "yes" ]]; then
 		run_media_installer \
 			"Jellyfin" \
-			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-jellyfin.sh" \
+			"https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/media-jellyfin.sh" \
 			install_jellyfin_media_server
 	fi
 	if [[ "$WANT_EMBY" == "yes" ]]; then
 		run_media_installer \
 			"Emby" \
-			"https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-emby.sh" \
+			"https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/media-emby.sh" \
 			install_emby_media_server
 	fi
 }

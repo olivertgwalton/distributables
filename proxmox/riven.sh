@@ -8,7 +8,7 @@ if [ -f "$BUILD_FUNC_LOCAL" ]; then
   source "$BUILD_FUNC_LOCAL"
 else
   # Fallback to remote build.func when running directly via curl from GitHub
-  source <(curl -s https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/build.func)
+  source <(curl -s https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/build.func)
 fi
 
 function header_info {

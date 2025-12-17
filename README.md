@@ -12,7 +12,7 @@ To create a Debian 12, unprivileged LXC running Riven on a Proxmox VE host,
 run this from the **Proxmox host shell**:
 
 ```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/riven.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/riven.sh)"
 ```
 
 For detailed Proxmox instructions (requirements, configuration, and troubleshooting),

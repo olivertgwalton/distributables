@@ -3,7 +3,7 @@
 # Jellyfin Media Server install helper for the Riven LXC.
 #
 # This file is intended to be sourced by proxmox/riven-install.sh via:
-#   source /dev/stdin <<<"$(curl -fsSL https://raw.githubusercontent.com/rivenmedia/distributables/main/proxmox/media-jellyfin.sh)"
+#   source /dev/stdin <<<"$(curl -fsSL https://raw.githubusercontent.com/olivertgwalton/distributables/main/proxmox/media-jellyfin.sh)"
 #
 # It assumes the following are already available in the environment:
 #   - msg_info/msg_ok/msg_error functions (from tteck install.func)
