@@ -200,7 +200,7 @@ msg_ok "Installed uv"
 
 msg_info "Installing Riven backend"
 if [ ! -d /riven/src ]; then
-	git clone https://github.com/rivenmedia/riven.git /riven/src >/dev/null 2>&1 || {
+	git clone https://github.com/olivertgwalton/riven.git -b feature/estimated-bitrate /riven/src >/dev/null 2>&1 || {
 		msg_error "Failed to clone Riven backend repository"
 		exit 1
 	}
@@ -289,7 +289,7 @@ if [ "$INSTALL_FRONTEND" = "yes" ]; then
   msg_info "Installing Riven frontend"
   if [ ! -d /opt/riven-frontend/.git ]; then
     rm -rf /opt/riven-frontend
-    git clone https://github.com/rivenmedia/riven-frontend.git /opt/riven-frontend >/dev/null 2>&1 || {
+    git clone https://github.com/olivertgwalton/riven-frontend.git -b estimated-bitrate /opt/riven-frontend >/dev/null 2>&1 || {
       msg_error "Failed to clone Riven frontend repository"
       exit 1
     }
